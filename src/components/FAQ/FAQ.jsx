@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 
 import FAQItem from "./FAQItem";
-import faqData from "./faqData";
+import faqData from "./faqdata";
 
 const FAQ = () => {
   const [active, setActive] = useState(0);
