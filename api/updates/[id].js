@@ -21,21 +21,32 @@ async function findPost(id) {
 
   if (!blob) return null;
 
-  const response = await fetch(blob.url);
-
-  if (!response.ok) {
-    throw new Error("Unable to read post");
+  let post = null;
+  try {
+    const response = await fetch(blob.url);
+    if (response.ok) {
+      post = await response.json();
+    }
+  } catch (err) {
+    console.warn("Unable to read post data:", err);
   }
 
   return {
     blob,
-    post: await response.json(),
+    post: post || { id },
   };
 }
 
 export default async function handler(req, res) {
   try {
-    const { id } = req.query;
+    let id = req.query?.id;
+    if (!id && req.url) {
+      const urlPath = req.url.split("?")[0];
+      const match = urlPath.match(/\/api\/updates\/([a-f0-9-]{36})/i);
+      if (match) {
+        id = match[1];
+      }
+    }
 
     if (
       typeof id !== "string" ||
@@ -124,12 +135,18 @@ export default async function handler(req, res) {
       const urlsToDelete = [blob.url];
       if (
         post.imageUrl &&
+        typeof post.imageUrl === "string" &&
         post.imageUrl.includes(".blob.vercel-storage.com")
       ) {
         urlsToDelete.push(post.imageUrl);
       }
 
-      await del(urlsToDelete);
+      try {
+        await del(urlsToDelete);
+      } catch (delError) {
+        console.warn("Multi-delete failed, falling back to deleting post blob:", delError);
+        await del(blob.url);
+      }
 
       return res.status(200).json({
         message: "Post deleted",

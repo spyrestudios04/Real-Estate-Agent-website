@@ -1,6 +1,7 @@
 import { list, put } from "@vercel/blob";
 import { randomUUID } from "node:crypto";
 import process from "node:process";
+import singlePostHandler from "./[id].js";
 
 const PREFIX = "updates/";
 
@@ -15,22 +16,33 @@ function isAuthorized(req) {
 
 export default async function handler(req, res) {
   try {
+    const urlPath = req.url ? req.url.split("?")[0] : "";
+    const hasPathId = /\/api\/updates\/[a-f0-9-]{36}/i.test(urlPath);
+    const hasQueryId = typeof req.query?.id === "string" && req.query.id.trim().length > 0;
+
+    if (hasPathId || hasQueryId || req.method === "DELETE" || req.method === "PATCH") {
+      return singlePostHandler(req, res);
+    }
+
     if (req.method === "GET") {
       const { blobs } = await list({ prefix: PREFIX });
 
-      const posts = await Promise.all(
+      const rawPosts = await Promise.all(
         blobs
           .filter((blob) => blob.pathname.endsWith(".json"))
           .map(async (blob) => {
-            const response = await fetch(blob.url);
-
-            if (!response.ok) {
-              throw new Error("Unable to read a post");
+            try {
+              const response = await fetch(blob.url);
+              if (!response.ok) return null;
+              return await response.json();
+            } catch (err) {
+              console.warn("Failed to read post blob:", blob.pathname, err);
+              return null;
             }
-
-            return response.json();
           })
       );
+
+      const posts = rawPosts.filter(Boolean);
 
       // Sort posts newest first by createdAt
       posts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
