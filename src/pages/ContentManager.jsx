@@ -16,13 +16,26 @@ export default function ContentManager() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [adminKey] = useState(() => {
+  const [adminKey, setAdminKey] = useState(() => {
     try {
       return localStorage.getItem("cms_admin_key") || "";
     } catch {
       return "";
     }
   });
+
+  function updateAdminKey(value) {
+    setAdminKey(value);
+    try {
+      if (value) {
+        localStorage.setItem("cms_admin_key", value);
+      } else {
+        localStorage.removeItem("cms_admin_key");
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
 
   const fileInputRef = useRef(null);
 
@@ -103,11 +116,39 @@ export default function ContentManager() {
         ...current,
         image: blob.url,
       }));
+      setErrorMessage("");
     } catch (err) {
       console.error("Vercel Blob upload failed:", err);
-      setErrorMessage(
-        "Image upload failed. Ensure Vercel Blob is connected and BLOB_READ_WRITE_TOKEN is configured."
-      );
+      let message = err?.message || "Image upload failed.";
+
+      if (
+        message.includes("retrieve the client token") ||
+        message.includes("retrieveClientToken")
+      ) {
+        try {
+          const testRes = await fetch("/api/upload", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(adminKey ? { "x-admin-secret": adminKey } : {}),
+            },
+            body: JSON.stringify({
+              type: "blob.generate-client-token",
+              payload: { pathname: file.name, clientPayload: null, multipart: false },
+            }),
+          });
+          const errorData = await testRes.json().catch(() => ({}));
+          if (errorData.error) {
+            message = errorData.error;
+          } else {
+            message = `Upload endpoint returned HTTP ${testRes.status} (${testRes.statusText || "Error"})`;
+          }
+        } catch (fetchErr) {
+          message = `Network error contacting /api/upload: ${fetchErr.message}`;
+        }
+      }
+
+      setErrorMessage(`Upload failed: ${message}`);
     } finally {
       setIsUploading(false);
     }
@@ -244,18 +285,37 @@ export default function ContentManager() {
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-8 text-slate-900 sm:px-8">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-8">
-          <p className="text-sm font-semibold uppercase tracking-widest text-indigo-600">
-            Website content
-          </p>
+        <header className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-widest text-indigo-600">
+              Website content
+            </p>
 
-          <h1 className="mt-2 text-3xl font-bold sm:text-4xl">
-            Content Manager
-          </h1>
+            <h1 className="mt-2 text-3xl font-bold sm:text-4xl">
+              Content Manager
+            </h1>
 
-          <p className="mt-2 text-slate-600">
-            Add and manage your website's offers, announcements, and gallery online with Vercel Blob.
-          </p>
+            <p className="mt-2 text-slate-600">
+              Add and manage your website's offers, announcements, and gallery online with Vercel Blob.
+            </p>
+          </div>
+
+          <div className="flex flex-col items-start gap-1 sm:items-end">
+            <label
+              htmlFor="admin-key-input"
+              className="text-xs font-medium text-slate-500"
+            >
+              Admin Key (if configured)
+            </label>
+            <input
+              id="admin-key-input"
+              type="password"
+              placeholder="Enter secret key..."
+              value={adminKey}
+              onChange={(e) => updateAdminKey(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs outline-none focus:border-indigo-500"
+            />
+          </div>
         </header>
 
         <section className="mb-10 rounded-2xl bg-white p-5 shadow-sm sm:p-7">

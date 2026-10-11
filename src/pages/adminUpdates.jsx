@@ -80,8 +80,8 @@ export default function AdminUpdates() {
         ...current,
         imageUrl: blob.url,
       }));
-    } catch {
-      setError("Image upload failed.");
+    } catch (err) {
+      setError(err?.message || "Image upload failed.");
     } finally {
       setLoading(false);
     }
